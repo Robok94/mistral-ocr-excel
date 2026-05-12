@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF → Excel via Mistral OCR</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.10);
+      padding: 2.5rem 2.5rem 2rem;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      margin-bottom: 1.5rem;
+    }
+    .logo svg { width: 36px; height: 36px; }
+    .logo h1 { font-size: 1.35rem; font-weight: 700; color: #1a202c; line-height: 1.2; }
+    .logo span { display: block; font-size: .75rem; font-weight: 400; color: #718096; }
+
+    label { display: block; font-size: .82rem; font-weight: 600; color: #4a5568; margin-bottom: .35rem; }
+
+    .api-row { margin-bottom: 1.25rem; position: relative; }
+    .api-row input {
+      width: 100%;
+      padding: .55rem .9rem;
+      padding-right: 2.6rem;
+      border: 1.5px solid #cbd5e0;
+      border-radius: 8px;
+      font-size: .88rem;
+      color: #2d3748;
+      transition: border-color .2s;
+      outline: none;
+    }
+    .api-row input:focus { border-color: #4472C4; }
+    .toggle-vis {
+      position: absolute; right: .7rem; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; color: #a0aec0; line-height: 1;
+      padding: 0;
+    }
+    .toggle-vis:hover { color: #4a5568; }
+
+    .drop-zone {
+      border: 2px dashed #b2bec3;
+      border-radius: 12px;
+      padding: 2.2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      margin-bottom: 1.4rem;
+      position: relative;
+    }
+    .drop-zone.over { border-color: #4472C4; background: #ebf0fb; }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone svg { width: 44px; height: 44px; color: #a0aec0; margin-bottom: .6rem; }
+    .drop-zone .main-text { font-size: .95rem; font-weight: 600; color: #4a5568; }
+    .drop-zone .sub-text  { font-size: .78rem; color: #a0aec0; margin-top: .3rem; }
+    .drop-zone .file-name {
+      font-size: .85rem; color: #4472C4; font-weight: 600;
+      margin-top: .5rem; word-break: break-all;
+    }
+
+    .btn-convert {
+      width: 100%;
+      padding: .75rem;
+      background: #4472C4;
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+    }
+    .btn-convert:hover:not(:disabled) { background: #3460b0; }
+    .btn-convert:active:not(:disabled) { transform: scale(.98); }
+    .btn-convert:disabled { background: #b2bec3; cursor: not-allowed; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2.5px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status {
+      margin-top: 1rem;
+      font-size: .84rem;
+      border-radius: 8px;
+      padding: .55rem .85rem;
+      display: none;
+    }
+    .status.info    { background: #ebf0fb; color: #2b4a9c; display: block; }
+    .status.success { background: #e6f9f0; color: #1a6640; display: block; }
+    .status.error   { background: #fff0f0; color: #9b2335; display: block; }
+
+    footer {
+      margin-top: 1.4rem;
+      font-size: .72rem;
+      color: #b2bec3;
+      text-align: center;
+    }
+    footer a { color: #a0aec0; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div class="logo">
+    <!-- PDF icon -->
+    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="36" height="36" rx="8" fill="#4472C4"/>
+      <path d="M10 8h10l6 6v14a2 2 0 01-2 2H10a2 2 0 01-2-2V10a2 2 0 012-2z" fill="white" fill-opacity=".9"/>
+      <path d="M20 8l6 6h-4a2 2 0 01-2-2V8z" fill="white" fill-opacity=".5"/>
+      <text x="18" y="24" text-anchor="middle" font-size="7" font-weight="700" fill="#4472C4" font-family="sans-serif">PDF→XLS</text>
+    </svg>
+    <h1>PDF → Excel<span>via Mistral OCR</span></h1>
+  </div>
+
+  <!-- API Key -->
+  <div class="api-row">
+    <label for="apiKey">Mistral API-Schlüssel</label>
+    <input type="password" id="apiKey" placeholder="sk-…" autocomplete="off" />
+    <button class="toggle-vis" type="button" onclick="toggleVis()" title="Anzeigen / verbergen">
+      <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".pdf" />
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    <div class="main-text">PDF hier ablegen oder klicken</div>
+    <div class="sub-text">Unterstützt: PDF · max. 50 MB</div>
+    <div class="file-name" id="fileName"></div>
+  </div>
+
+  <!-- Convert button -->
+  <button class="btn-convert" id="convertBtn" onclick="convert()" disabled>
+    <div class="spinner" id="spinner"></div>
+    <span id="btnLabel">Konvertieren</span>
+  </button>
+
+  <!-- Status -->
+  <div class="status" id="status"></div>
+
+  <footer>
+    API-Schlüssel werden nur lokal verwendet und nicht gespeichert. ·
+    <a href="https://mistral.ai" target="_blank" rel="noopener">Mistral AI</a>
+  </footer>
+</div>
+
+<script>
+  const dropZone   = document.getElementById('dropZone');
+  const fileInput  = document.getElementById('fileInput');
+  const fileNameEl = document.getElementById('fileName');
+  const convertBtn = document.getElementById('convertBtn');
+  const spinner    = document.getElementById('spinner');
+  const btnLabel   = document.getElementById('btnLabel');
+  const statusEl   = document.getElementById('status');
+  const apiKeyEl   = document.getElementById('apiKey');
+
+  let selectedFile = null;
+
+  // ── Drag & Drop ──────────────────────────────────────────────────────────
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  function setFile(f) {
+    if (!f.name.toLowerCase().endsWith('.pdf')) {
+      showStatus('Bitte nur PDF-Dateien auswählen.', 'error');
+      return;
+    }
+    selectedFile = f;
+    fileNameEl.textContent = f.name;
+    updateBtn();
+    clearStatus();
+  }
+
+  apiKeyEl.addEventListener('input', updateBtn);
+
+  function updateBtn() {
+    convertBtn.disabled = !(selectedFile && apiKeyEl.value.trim());
+  }
+
+  // ── Eye toggle ────────────────────────────────────────────────────────────
+  function toggleVis() {
+    const input = apiKeyEl;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+
+  // ── Convert ───────────────────────────────────────────────────────────────
+  async function convert() {
+    if (!selectedFile || !apiKeyEl.value.trim()) return;
+
+    setLoading(true);
+    showStatus('PDF wird an Mistral OCR übermittelt…', 'info');
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('api_key', apiKeyEl.value.trim());
+
+    try {
+      const res = await fetch('/process', { method: 'POST', body: formData });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Unbekannter Fehler.' }));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      // Trigger download
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      a.download = match ? match[1] : 'output.xlsx';
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      showStatus('✓ Excel-Datei wurde erfolgreich erstellt und heruntergeladen.', 'success');
+    } catch (err) {
+      showStatus('Fehler: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function setLoading(on) {
+    convertBtn.disabled = on;
+    spinner.style.display = on ? 'block' : 'none';
+    btnLabel.textContent = on ? 'Verarbeite…' : 'Konvertieren';
+  }
+
+  function showStatus(msg, type) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status ' + type;
+  }
+
+  function clearStatus() {
+    statusEl.className = 'status';
+    statusEl.textContent = '';
+  }
+</script>
+</body>
+</html>
